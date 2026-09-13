@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#0d1117" />
+<title>Laptop Explorer — 3D 场景树教学工具</title>
+<link rel="stylesheet" href="style.css?v=1789209527526" />
+</head>
+<body>
+  <div id="app"></div>
+  <input type="file" id="wall-input" accept="image/*" style="display:none">
+
+  <div class="ui" id="top">
+    <div id="title">LAPTOP EXPLORER · 3D 场景树教学</div>
+    <div id="breadcrumb"></div>
+    <div id="top-actions">
+      <button id="nav-btn">☰ 模块导航</button>
+      <button id="pc-btn">🖥 电脑模式</button>
+      <button id="tour-btn">🎬 自动导览</button>
+      <button id="quality-btn">⚡ 画质:高</button>
+      <button id="shot-btn">📸 截图</button>
+    </div>
+  </div>
+  <style>
+    #top-actions { position: absolute; right: 14px; top: 12px; display: flex; gap: 8px; }
+    #top-actions button {
+      background: rgba(22, 27, 34, 0.85); color: #8fd4ff;
+      border: 1px solid #2d333b; border-radius: 6px;
+      padding: 4px 10px; font-size: 12px; cursor: pointer;
+    }
+    #top-actions button:hover { background: #1f2630; color: #cfe8ff; }
+    #nav-panel {
+      position: absolute; left: 10px; top: 44px; bottom: 40px; width: 236px;
+      background: rgba(13, 17, 23, 0.94); border: 1px solid #2d333b; border-radius: 8px;
+      overflow-y: auto; padding: 6px; z-index: 30;
+    }
+    .nav-item {
+      padding: 5px 10px; font-size: 12.5px; color: #b8c4d0; cursor: pointer;
+      border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .nav-item:hover { background: #1f2630; color: #cfe8ff; }
+    .nav-item.active { background: #14324a; color: #8fd4ff; font-weight: 600; }
+    #hint-bar {
+      position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+      background: rgba(13, 17, 23, 0.82); border: 1px solid #2d333b; border-radius: 16px;
+      padding: 5px 16px; font-size: 11.5px; color: #9fb8d8; white-space: nowrap; z-index: 25;
+    }
+    #hint-bar b { color: #8fd4ff; font-weight: 600; }
+    /* 触屏设备:隐藏键盘类操作提示 */
+    @media (pointer: coarse) {
+      #hint-bar .kb-only { display: none; }
+    }
+    /* 手机/窄屏:面板收窄、顶栏精简 */
+    @media (max-width: 720px) {
+      #top-actions { left: 10px; right: 10px; top: 8px; flex-wrap: wrap; justify-content: flex-end; }
+      #top-actions button { padding: 5px 8px; font-size: 11px; }
+      #panel { width: auto !important; max-width: calc(100vw - 20px); left: 10px !important; right: 10px; }
+      #nav-panel { width: 200px; top: 84px; }
+      #hint-bar { display: none; }
+      #enter-tip { font-size: 11px; }
+    }
+  </style>
+  <div class="ui" id="nav-panel" style="display:none">
+    <div style="padding:8px 10px;font-size:12px;color:#7d8590;border-bottom:1px solid #2d333b">全部模块 · 点击直达</div>
+    <div id="nav-tree"></div>
+  </div>
+  <div class="ui" id="hint-bar">
+    <b>左键</b> 点击部件 / 旋转 · <b>右键</b> 平移 · <b>滚轮</b> 缩放 · <b class="kb-only">WASD/QE 平移 · ←→↑↓ 切换模块 · </b><b>P</b> 电脑模式(屏幕/触控板控光标 · 3D 键盘可敲)<span id="hint-err" style="color:#ff7b72;font-weight:600"></span>
+  </div>
+  <div class="ui" id="hint-touch" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(13,17,23,0.82);border:1px solid #2d333b;border-radius:16px;padding:5px 14px;font-size:11.5px;color:#9fb8d8;white-space:nowrap;display:none;z-index:25">
+    <b style="color:#8fd4ff">单指</b> 旋转 / 点击部件 · <b style="color:#8fd4ff">双指</b> 缩放 / 平移
+  </div>
+
+  <div class="ui" id="panel">
+    <div id="panel-inner">
+      <div id="node-label"></div>
+      <div id="node-desc"></div>
+      <div id="hover-hint"></div>
+      <div id="enter-tip">
+        <span><b>拖拽</b> 360° 旋转</span>
+        <span><b>右键拖拽 / WASD</b> 平移</span>
+        <span><b>滚轮</b> 缩放</span>
+        <span><b>点击部件 / ☰导航</b> 深入内部</span>
+        <span><b>ESC / 面包屑</b> 返回上级</span>
+        <span><b>P</b> 电脑模式(键鼠控制模拟电脑)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 节点专属交互面板(仅对应节点可见) -->
+  <div class="ui overlay-panel" id="asm-panel" data-node="pipeline" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">玩具汇编 · 指令流水线</div>
+      <textarea id="asm-code" spellcheck="false">MOV A, 5
+ADD A, 3
+SUB A, 2
+OUT A</textarea>
+      <div class="overlay-btns">
+        <button id="asm-run">▶ 运行(跟随镜头)</button>
+        <button id="asm-step">单步</button>
+        <button id="asm-reset">重置</button>
+      </div>
+      <div id="asm-status">A=0 B=0 D=0</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="alu-panel" data-node="alu" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">全加器输入(自动循环真值表,点按钮手动干预)</div>
+      <div class="overlay-btns">
+        <button id="alu-a">A = 0</button>
+        <button id="alu-b">B = 0</button>
+        <button id="alu-cin">Cin = 0</button>
+      </div>
+      <div id="alu-status">A=0 B=0 Cin=0 → Sum=0 Cout=0</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="cache-panel" data-node="cache" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">缓存延迟对比</div>
+      <div class="overlay-btns">
+        <button id="cache-hit">✓ 模拟命中(L1 → 寄存器)</button>
+        <button id="cache-miss">⏳ 模拟未命中(内存逐级搬运)</button>
+      </div>
+      <div id="cache-status">命中:快而稳;未命中:逐级搬运,明显等待</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="ramarray-panel" data-node="ramarray" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">地址译码(0..199)</div>
+      <div class="overlay-btns">
+        <label style="font-size:12px;color:#7d8590">行 <input id="ram-row" type="number" min="0" max="199" value="120" style="width:64px;background:#0d1117;color:#e6edf3;border:1px solid #2d333b;border-radius:4px;padding:3px"></label>
+        <label style="font-size:12px;color:#7d8590">列 <input id="ram-col" type="number" min="0" max="199" value="86" style="width:64px;background:#0d1117;color:#e6edf3;border:1px solid #2d333b;border-radius:4px;padding:3px"></label>
+      </div>
+      <div class="overlay-btns">
+        <button id="ram-select">◎ 选中该单元</button>
+        <button id="ram-random">🎲 随机地址</button>
+      </div>
+      <div id="ram-status">输入行/列地址,或点击随机</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="cell-panel" data-node="cell" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">1T1C 存储单元</div>
+      <div class="overlay-btns">
+        <button id="cell-charge">⚡ 充电(写 1)</button>
+        <button id="cell-discharge">放电(写 0)</button>
+        <button id="cell-refresh">↻ 刷新</button>
+      </div>
+      <div id="cell-status">电荷 72% · 存储值 1</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="display-panel" data-node="display" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">刷新率(Framebuffer 扫描速度)</div>
+      <div class="overlay-btns">
+        <button id="hz-60">60 Hz</button>
+        <button id="hz-120">120 Hz</button>
+      </div>
+      <div id="hz-label" style="font-size:12px;color:#7d8590">当前:60 Hz</div>
+      <div id="hz-status">切换按钮感受扫描速度差异</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="keyswitch-panel" data-node="keyswitch" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">按键状态</div>
+      <div class="overlay-btns">
+        <button id="ks-press">⬇ 按下</button>
+        <button id="ks-release">⬆ 松开</button>
+      </div>
+      <div id="ks-status">未按下 — 剪式支架撑起,触点断开</div>
+    </div>
+  </div>
+
+    <div class="ui overlay-panel" id="battery-panel" data-node="batterycore" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">锂离子迁移方向</div>
+      <div class="overlay-btns">
+        <button id="bat-charge">⚡ 充电(正→负)</button>
+        <button id="bat-discharge">🔌 放电(负→正)</button>
+      </div>
+      <div id="battery-status">充电中:锂离子从正极穿过隔膜迁移到负极</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="cooling-panel" data-node="cooling" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">CPU / GPU 负载(风扇惯性响应)</div>
+      <input id="cool-load" type="range" min="0" max="100" value="35" style="width:100%">
+      <div id="cooling-status">负载 35% · 风扇低速</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="transistor-panel" data-node="transistor" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">外加电压(耗尽层宽度)</div>
+      <input id="pn-v" type="range" min="-50" max="8" value="6" style="width:100%">
+      <div class="overlay-btns">
+        <button id="pn-auto">↻ 自动演示</button>
+      </div>
+      <div id="pn-status">零偏</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="tube-panel" data-node="vacuumtube" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">栅极电压(控制电子流粗细)</div>
+      <input id="tube-vg" type="range" min="-80" max="0" value="-15" style="width:100%">
+      <div class="overlay-btns">
+        <button id="tube-power">⏻ 灯丝电源</button>
+      </div>
+      <div id="tube-status">灯丝温度 0%</div>
+    </div>
+  </div>
+
+    <div class="ui overlay-panel" id="nand-panel" data-node="nand" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">NAND 闪存:按页写、按块擦</div>
+      <div class="overlay-btns">
+        <button id="nand-write">✏ 写入一页</button>
+        <button id="nand-gc">♻ 垃圾回收(搬有效页→擦块)</button>
+      </div>
+      <div id="nand-status">闪存按"页"写入、按"块"擦除——先写入看看</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="speaker-panel" data-node="speakerdetail" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">驱动信号(正弦波)</div>
+      <label style="font-size:12px;color:#7d8590">频率(音调)<input id="spk-freq" type="range" min="5" max="100" value="35" style="width:100%"></label>
+      <label style="font-size:12px;color:#7d8590">幅度(音量)<input id="spk-amp" type="range" min="5" max="100" value="55" style="width:100%"></label>
+      <div id="speaker-status">拖动滑块,线圈受力随信号往复 → 振膜推动空气发声</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="touchpad-panel" data-node="touchpad" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">手指扫描</div>
+      <div class="overlay-btns">
+        <button id="touchpad-auto">⏸ 暂停自动扫描</button>
+      </div>
+      <div id="touchpad-status">手指自动扫描中 — 电场线随手指形变</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="codec-panel" data-node="codec" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">转换方向</div>
+      <div class="overlay-btns">
+        <button id="codec-adc">🎙 ADC 录音(模拟→数字)</button>
+        <button id="codec-dac">🔊 DAC 播放(数字→模拟)</button>
+      </div>
+      <div id="codec-status">当前:ADC — 波形被采样+量化成阶梯</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="camera-panel" data-node="camera" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">CMOS 曝光</div>
+      <div class="overlay-btns">
+        <button id="camera-shot">📸 重新拍摄</button>
+      </div>
+      <div id="camera-status">曝光中…</div>
+    </div>
+  </div>
+
+  <div class="ui overlay-panel" id="charger-panel" data-node="charger" style="display:none">
+    <div class="overlay-inner">
+      <div class="overlay-title">AC → DC 流水线</div>
+      <div id="charger-status">观察发光粒子:黄(交流)→ 橙红(高频脉冲)→ 绿(直流)</div>
+    </div>
+  </div>
+
+  <!-- 测试钩子:包装 RAF + 虚拟时钟支持手动泵帧(默认直通零偏移,生产行为不变;自动化验收用 __pumpRAF(n)) -->
+  <script>
+    window.__errs = [];
+    window.addEventListener('error', e => window.__errs.push(('ERR:' + e.message + ' @ ' + (e.filename || '').split('/').pop() + ':' + e.lineno).slice(0, 240)));
+    window.__rafQ = [];
+    window.__rafManual = false;
+    window.__vnow = 0; // 虚拟时钟偏移:每泵一帧 +16.7ms
+    const __realNow = performance.now.bind(performance);
+    performance.now = function () { return __realNow() + window.__vnow; };
+    const __nativeRAF = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = function (cb) {
+      if (window.__rafManual) { window.__rafQ.push(cb); return 0; }
+      return __nativeRAF(cb);
+    };
+    window.__pumpRAF = function (frames) {
+      for (let i = 0; i < frames; i++) {
+        if (!window.__rafQ.length && window.__animate) window.__animate(); // 兜底:循环未被手动模式接管时强启
+        const q = window.__rafQ;
+        window.__rafQ = [];
+        window.__vnow += 16.7;
+        const now = performance.now();
+        for (const cb of q) {
+          try { cb(now); }
+          catch (e) {
+            window.__errs.push('PUMP:' + ((e && e.stack) || e).toString().slice(0, 400));
+            // 兜底:动画回调抛错时解除输入锁,保证页面永不永久卡死
+            if (window.__mgr) { window.__mgr.transitioning = false; window.__mgr.followObj = null; window.__mgr.proxies = window.__mgr.proxies || []; }
+          }
+        }
+      }
+    };
+  </script>
+  <!-- Three.js r147:最后附带全局脚本版 examples/js 的版本,file:// 双击即可运行 -->
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- 环境 / 圆角几何 -->
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/environments/RoomEnvironment.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/geometries/RoundedBoxGeometry.js"></script>
+  <!-- 后处理管线:Render → SSAO → Bloom → Gamma → FXAA -->
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/shaders/CopyShader.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/shaders/FXAAShader.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/shaders/GammaCorrectionShader.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/shaders/SSAOShader.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/math/SimplexNoise.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/postprocessing/MaskPass.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/three@0.147.0/examples/js/postprocessing/SSAOPass.js"></script>
+
+  <!-- 项目模块(全局命名空间 LX,无构建工具,按依赖顺序加载) -->
+  <script src="core/easing.js?v=1789209527526"></script>
+  <script src="core/materials.js?v=1789209527526"></script>
+  <script src="core/particleSystem.js?v=1789209527526"></script>
+  <script src="core/csgUtils.js?v=1789209527526"></script>
+  <script src="core/instancedHelper.js?v=1789209527526"></script>
+  <script src="core/postprocessing.js?v=1789209527526"></script>
+  <script src="core/lighting.js?v=1789209527526"></script>
+  <script src="controls.js?v=1789209527526"></script>
+  <script src="ui/breadcrumb.js?v=1789209527526"></script>
+  <script src="ui/infoPanel.js?v=1789209527526"></script>
+  <!-- 部件模型 -->
+  <script src="models/hinge.js?v=1789209527526"></script>
+  <script src="models/laptop.js?v=1789209527526"></script>
+  <script src="models/io/keyboard.js?v=1789209527526"></script>
+  <script src="models/io/touchpad.js?v=1789209527526"></script>
+  <script src="models/io/speaker.js?v=1789209527526"></script>
+  <script src="models/mainboard/motherboard.js?v=1789209527526"></script>
+  <script src="models/mainboard/vrm.js?v=1789209527526"></script>
+  <script src="models/memoryStorage/ram.js?v=1789209527526"></script>
+  <script src="models/memoryStorage/rom.js?v=1789209527526"></script>
+  <script src="models/memoryStorage/ssd.js?v=1789209527526"></script>
+  <script src="models/power/battery.js?v=1789209527526"></script>
+  <script src="models/cooling/cooling.js?v=1789209527526"></script>
+  <script src="models/cpu/cpuPackage.js?v=1789209527526"></script>
+  <script src="models/cpu/pipeline.js?v=1789209527526"></script>
+  <script src="models/cpu/alu.js?v=1789209527526"></script>
+  <script src="models/cpu/registers.js?v=1789209527526"></script>
+  <script src="models/cpu/cache.js?v=1789209527526"></script>
+  <script src="models/cpu/assemblySimulator.js?v=1789209527526"></script>
+  <script src="models/graphics/gpu.js?v=1789209527526"></script>
+  <script src="models/graphics/rasterPipeline.js?v=1789209527526"></script>
+  <script src="models/graphics/display.js?v=1789209527526"></script>
+  <script src="models/semiconductors/transistor.js?v=1789209527526"></script>
+  <script src="models/semiconductors/vacuumTube.js?v=1789209527526"></script>
+  <script src="models/io/camera.js?v=1789209527526"></script>
+  <script src="models/io/mouse.js?v=1789209527526"></script>
+  <script src="models/mainboard/chipset.js?v=1789209527526"></script>
+  <script src="models/mainboard/wifiCard.js?v=1789209527526"></script>
+  <script src="models/mainboard/audioCodec.js?v=1789209527526"></script>
+  <script src="models/power/charger.js?v=1789209527526"></script>
+  <!-- 场景树与管理器 -->
+  <script src="sceneTree.js?v=1789209527526"></script>
+  <script src="sceneManager.js?v=1789209527526"></script>
+</body>
+</html>
