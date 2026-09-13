@@ -400,8 +400,10 @@
   /* ----- 导航(纪录片式运镜) ----- */
   function framingFor(node, fromDir) {
     const dir = fromDir || camera.position.clone().sub(controls.target).normalize();
+    // 竖屏/窄屏视锥横向窄:拉远取景,避免机身左右(键盘两端)被裁掉
+    const fit = window.innerWidth / window.innerHeight < 1 ? 1.4 : 1;
     return {
-      pos: dir.clone().multiplyScalar(node.cameraDistance),
+      pos: dir.clone().multiplyScalar(node.cameraDistance * fit),
       target: new THREE.Vector3(0, 0, 0),
     };
   }
@@ -604,6 +606,13 @@
       if (uv && LX.osClick) LX.osClick(uv.x, uv.y);
       return;
     }
+    if (!mgr.hovered && !mgr.transitioning) {
+      // 触屏点按没有 hover 过程:松开时按点按坐标补一次拾取(修手机点部件无反应)
+      const r = renderer.domElement.getBoundingClientRect();
+      mgr.pointer.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+      mgr.pointer.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+      pickProxy();
+    }
     if (mgr.hovered && !mgr.transitioning) enterChild(mgr.hovered);
   });
 
@@ -635,7 +644,8 @@
         const bb = new THREE.Box3().setFromObject(pm);
         const nx = THREE.MathUtils.clamp((h.point.x - bb.min.x) / Math.max(bb.max.x - bb.min.x, 1e-6), 0, 1);
         const nz = THREE.MathUtils.clamp((h.point.z - bb.min.z) / Math.max(bb.max.z - bb.min.z, 1e-6), 0, 1);
-        osUV = { x: nx * 1024, y: (1 - nz) * 640 };
+        // 触控板映射:pad 远端(-z,靠屏幕)= 桌面顶部(nz 小 → y 小)——方向与真机一致
+        osUV = { x: nx * 1024, y: nz * 640 };
         return osUV;
       }
     }
@@ -648,6 +658,7 @@
     // 飞行 1.6s 与开盖动画重叠,落定时屏幕已立起,raycast 稳定
     flyCamera(new THREE.Vector3(0, 2.5, 4.3), new THREE.Vector3(0, 0.62, 0.05), 1.6, LX.Ease.inOutCubic, () => {
       pcMode = true;
+      document.body.classList.add('pc-mode'); // 隐藏全部 UI,只看模拟屏幕
       if (LX.osPC) LX.osPC(true); // 屏幕顶部绿色横幅自证:模式已激活
     });
   }
@@ -655,6 +666,7 @@
     if (pcMode) {
       pcMode = false;
       osUV = null;
+      document.body.classList.remove('pc-mode');
       if (LX.osPC) LX.osPC(false);
       controls.enabled = true;
       flyCamera(pcSaved.pos, pcSaved.tgt, 1.0, LX.Ease.inOutCubic);

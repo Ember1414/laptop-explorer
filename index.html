@@ -56,12 +56,33 @@
     @media (max-width: 720px) {
       #top-actions { left: 10px; right: 10px; top: 8px; flex-wrap: wrap; justify-content: flex-end; }
       #top-actions button { padding: 5px 8px; font-size: 11px; }
-      #panel { width: auto !important; max-width: calc(100vw - 20px); left: 10px !important; right: 10px; }
+      #panel { left: 8px !important; right: 8px; padding: 4px 8px 8px; }
+      #panel-inner { max-width: calc(100vw - 32px); padding: 10px 14px; }
       #nav-panel { width: 200px; top: 84px; }
       #hint-bar { display: none; }
       #enter-tip { font-size: 11px; }
     }
+    /* 电脑模式:隐藏全部 UI,只看屏幕 */
+    body.pc-mode #panel, body.pc-mode #hint-bar, body.pc-mode #hint-touch,
+    body.pc-mode #nav-panel, body.pc-mode #top-actions { display: none !important; }
   </style>
+  <script>
+    (function () {
+      const p = document.getElementById('panel');
+      const t = document.getElementById('panel-toggle');
+      const h = document.getElementById('panel-header');
+      if (!p || !t || !h) return;
+      h.addEventListener('click', () => {
+        p.classList.toggle('collapsed');
+        t.textContent = p.classList.contains('collapsed') ? '▸' : '▾';
+      });
+      // 触屏/窄屏默认折叠:面板不再遮挡机身(键盘在前部)
+      if (window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 720) {
+        p.classList.add('collapsed');
+        t.textContent = '▸';
+      }
+    })();
+  </script>
   <div class="ui" id="nav-panel" style="display:none">
     <div style="padding:8px 10px;font-size:12px;color:#7d8590;border-bottom:1px solid #2d333b">全部模块 · 点击直达</div>
     <div id="nav-tree"></div>
@@ -74,6 +95,10 @@
   </div>
 
   <div class="ui" id="panel">
+    <div id="panel-header">
+      <span>ℹ 部件介绍(点击折叠)</span>
+      <button id="panel-toggle" aria-label="折叠/展开">▾</button>
+    </div>
     <div id="panel-inner">
       <div id="node-label"></div>
       <div id="node-desc"></div>
